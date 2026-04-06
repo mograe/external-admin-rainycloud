@@ -4,15 +4,11 @@ import { getClients, getLogs } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const columns = [
-  { key: "id", label: "ID" },
-  { key: "source_client_name", label: "Клиент" },
-  { key: "show_number", label: "№ показа" },
-  { key: "socket_connections", label: "Подключения" },
-  { key: "movie_title", label: "Название" },
-  { key: "duration_minutes", label: "Минуты" },
-  { key: "started_at_utc", label: "Начало" },
-  { key: "finished_at_utc", label: "Окончание" },
-  { key: "received_at_utc", label: "Получено" },
+  { key: "date", label: "Дата", sortKey: "started_at_utc" },
+  { key: "show_number", label: "Номер показа за день", sortKey: "show_number" },
+  { key: "movie_title", label: "Название видео", sortKey: "movie_title" },
+  { key: "socket_connections", label: "Количество подключений", sortKey: "socket_connections" },
+  { key: "show_duration", label: "Длительность показа", sortKey: "finished_at_utc" },
 ];
 
 export default function LogsPage() {
@@ -31,7 +27,7 @@ export default function LogsPage() {
   const [clientId, setClientId] = useState("");
   const [total, setTotal] = useState(0);
 
-  const [sortBy, setSortBy] = useState("finished_at_utc");
+  const [sortBy, setSortBy] = useState("started_at_utc");
   const [sortDir, setSortDir] = useState("desc");
 
   async function loadLogs({
@@ -99,18 +95,19 @@ export default function LogsPage() {
     setAppliedQuery(query);
   }
 
-  function handleSort(columnKey) {
-    const isSame = sortBy === columnKey;
+  function handleSort(column) {
+    const nextSortBy = column.sortKey;
+    const isSame = sortBy === nextSortBy;
     const nextDir = isSame && sortDir === "asc" ? "desc" : "asc";
 
-    setSortBy(columnKey);
+    setSortBy(nextSortBy);
     setSortDir(nextDir);
 
     loadLogs({
       nextPage: 1,
       q: appliedQuery,
       selectedClientId: clientId,
-      nextSortBy: columnKey,
+      nextSortBy,
       nextSortDir: nextDir,
     });
   }
@@ -138,7 +135,7 @@ export default function LogsPage() {
         <form className="filters-row" onSubmit={handleSearchSubmit}>
           <input
             type="text"
-            placeholder="Поиск по названию, path или id"
+            placeholder="Поиск по названию видео или id"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -175,12 +172,12 @@ export default function LogsPage() {
                   {columns.map((col) => (
                     <th
                       key={col.key}
-                      onClick={() => handleSort(col.key)}
+                      onClick={() => handleSort(col)}
                       className="sortable-th"
                     >
                       <span>{col.label}</span>
                       <span className="sort-indicator">
-                        {sortBy === col.key ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                        {sortBy === col.sortKey ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                       </span>
                     </th>
                   ))}
@@ -191,17 +188,13 @@ export default function LogsPage() {
                   <tr key={item.id}>
                     <td>
                       <Link to={`/logs/${item.id}`} className="table-link">
-                        {item.id}
+                        {formatDateOnly(item.started_at_utc)}
                       </Link>
                     </td>
-                    <td>{item.source_client_name || "-"}</td>
-                    <td>{item.show_number}</td>
-                    <td>{item.socket_connections}</td>
-                    <td>{item.movie_title}</td>
-                    <td>{item.duration_minutes ?? 0} мин</td>
-                    <td>{formatDate(item.started_at_utc)}</td>
-                    <td>{formatDate(item.finished_at_utc)}</td>
-                    <td>{formatDate(item.received_at_utc)}</td>
+                    <td>{item.show_number ?? "-"}</td>
+                    <td>{item.movie_title || "-"}</td>
+                    <td>{item.socket_connections ?? 0}</td>
+                    <td>{formatDuration(item.started_at_utc, item.finished_at_utc)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -251,11 +244,36 @@ export default function LogsPage() {
   );
 }
 
-function formatDate(value) {
+function formatDateOnly(value) {
   if (!value) return "-";
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return date.toLocaleString("ru-RU");
+  return date.toLocaleDateString("ru-RU");
+}
+
+function formatDuration(startValue, endValue) {
+  if (!startValue || !endValue) return "-";
+
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "-";
+  }
+
+  const diffMs = end.getTime() - start.getTime();
+  if (diffMs < 0) return "-";
+
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours} ч ${String(minutes).padStart(2, "0")} мин ${String(seconds).padStart(2, "0")} сек`;
+  }
+
+  return `${minutes} мин ${String(seconds).padStart(2, "0")} сек`;
 }
